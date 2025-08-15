@@ -1,146 +1,115 @@
 <!DOCTYPE html>
-<html lang="es">
+<html>
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Reporte Devoluciones</title>
+    <title>Reporte de Devoluciones con Detalles</title>
     <style>
         body {
             font-family: Arial, sans-serif;
-            background-color: #f0f0f0;
-            padding: 20px;
         }
-
-        h1 {
+        .header {
             text-align: center;
-            color: #333;
+            margin-bottom: 20px;
         }
-
+        .header h1 {
+            color: #3498db;
+            margin-bottom: 5px;
+        }
+        .header p {
+            margin: 0;
+            color: #555;
+        }
+        .fechas {
+            margin-bottom: 15px;
+            text-align: right;
+        }
         table {
             width: 100%;
             border-collapse: collapse;
-            margin-top: 20px;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-            background-color: #fff;
+            margin-bottom: 20px;
         }
-
-        th, td {
-            padding: 12px 15px;
+        th {
+            background-color: #3498db;
+            color: white;
+            padding: 8px;
             text-align: left;
+        }
+        td {
+            padding: 8px;
             border-bottom: 1px solid #ddd;
         }
-
-        th {
+        tr:nth-child(even) {
             background-color: #f2f2f2;
-            color: #333;
         }
-
-        tbody tr:nth-child(even) {
-            background-color: #f9f9f9;
+        .total {
+            font-weight: bold;
+            text-align: right;
+            padding: 10px;
+            background-color: #f2f2f2;
         }
-
-        tbody tr:hover {
-            background-color: #e0e0e0;
+        .footer {
+            margin-top: 30px;
+            text-align: center;
+            font-size: 12px;
+            color: #777;
         }
-         /* Cambiar el color del menú lateral */
-      .sidebar-dark-primary {
-        background-color: #2e6da4; /* Fondo azul mas oscuro*/
-    }
-    /* Cambiar el color de los iconos en el menú lateral */
-    .sidebar-dark-primary .nav-link i {
-        color:  #ffffff; /* Color azul oscuro para los iconos */
-    }
-    /* Cambiar el color de los textos en el menú lateral */
-    .sidebar-dark-primary .nav-link,
-    .sidebar-dark-primary .nav-link i,
-    .sidebar-dark-primary .nav-header {
-        color:  #ffffff; /* Color azul oscuro para los textos */
-    }
-
-    /* Cambiar el color de la barra de navegación superior */
-    .navbar-gradient {
-        background-image: linear-gradient(to right, #4dabf7, #2e6da4); /* Gradiente de azul primario a azul oscuro de izquierda a derecha */
-        color: #FFFFFF; /* Color blanco para los textos */
-    }
-    .navbar-gradient .navbar-nav .nav-link {
-        color: #FFFFFF; /* Color blanco para los textos del menú */
-    }
-    .navbar-gradient .navbar-nav .nav-link:hover {
-        color: #CCCCCC; /* Color gris claro para los textos del menú al pasar el ratón */
-    }
-    /* Estilo para el texto con gradiente */
-    .nav-link-gradient {
-        background: linear-gradient(to right, #3a8edb, #1f5b96); /* Gradiente de azul primario a azul oscuro */
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        display: inline-block;
-    }
-    .nav-link-gradient:hover {
-        background: linear-gradient(to right, #1f5b96, #3a8edb); /* Invertir gradiente al pasar el ratón */
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-    }
-    /* Definir text-blue-dark para que sea azul oscuro */
-    .text-blue-dark {
-        color: #1f5b96 !important; /* Azul oscuro */
-    }
-    /* Efecto de resaltado para los elementos del menú al pasar el ratón */
-.sidebar-dark-primary .nav-link {
-  position: relative;
-  padding-left: 1rem;
-  padding-right: 1rem;
-}
-
-.sidebar-dark-primary .nav-link::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background-color: #2e6da4;; /* Color de resaltado (blanco) */
-  opacity: 0;
-  transition: opacity 0.3s ease;
-  z-index: -1; /* Asegura que el fondo esté detrás del texto */
-}
-
-.sidebar-dark-primary .nav-link:hover::before {
-  opacity: 1; /* Mostrar el fondo blanco al pasar el ratón */
-}
     </style>
 </head>
 <body>
-    <h1>Reporte de las devoluciones</h1>
+    <div class="header">
+        <h1>Reporte de Devoluciones con Detalles</h1>
+        <p>Sistema de Gestión de Lácteos</p>
+    </div>
+
+    @if($fecha_inicio && $fecha_fin)
+    <div class="fechas">
+        <strong>Período:</strong> {{ \Carbon\Carbon::parse($fecha_inicio)->format('d/m/Y') }} al {{ \Carbon\Carbon::parse($fecha_fin)->format('d/m/Y') }}
+    </div>
+    @endif
 
     <table>
         <thead>
             <tr>
-                <th>Id Devolucion</th>
+                <th>ID Devolución</th>
                 <th>Producto</th>
-                <th>Fecha Devolucion</th>
-                <th>Motivo Devolucion</th>
-                <th>Id Detalle Devolucion</th>
-                <th>Acciones Tomadas</th>
+                <th>Fecha</th>
+                <th>Motivo</th>
+                <th>Acciones</th>
                 <th>Cantidad</th>
                 <th>Precio</th>
-                <th>Total devolucion</th>
+                <th>Subtotal</th>
             </tr>
         </thead>
         <tbody>
-            @foreach ($reportes as $reporte)
+            @php
+                $totalGeneral = 0;
+            @endphp
+            @foreach($reportes as $reporte)
             <tr>
-                <td>{{ $reporte->iddevolucion }}</td>
-                <td>{{ $reporte->producto }}</td>
-                <td>{{ date('d/m/Y', strtotime($reporte->fechadevolucion)) }}</td>
+                <td>{{ $reporte->id_devolucion }}</td>
+                <td>{{ $reporte->producto_descripcion }}</td>
+                <td>{{ \Carbon\Carbon::parse($reporte->fechadevolucion)->format('d/m/Y') }}</td>
                 <td>{{ $reporte->motivodevolucion }}</td>
-                <td>{{ $reporte->id_detalledevs }}</td>
                 <td>{{ $reporte->accionestomada }}</td>
-                <td>{{ number_format($reporte->cantidadD, 0) }}</td>
+                <td>{{ $reporte->cantidad }}</td>
                 <td>C$ {{ number_format($reporte->precio, 2) }}</td>
-                <td>C$ {{ number_format($reporte->totaldevolucion, 2) }}</td>
+                <td>C$ {{ number_format($reporte->cantidad * $reporte->precio, 2) }}</td>
             </tr>
+            @php
+                $totalGeneral += $reporte->cantidad * $reporte->precio;
+            @endphp
             @endforeach
         </tbody>
+        <tfoot>
+            <tr>
+                <td colspan="7" class="total">Total General:</td>
+                <td class="total">C$ {{ number_format($totalGeneral, 2) }}</td>
+            </tr>
+        </tfoot>
     </table>
+
+    <div class="footer">
+        Generado el {{ \Carbon\Carbon::now()->format('d/m/Y H:i:s') }}
+    </div>
 </body>
 </html>

@@ -13,29 +13,21 @@ class DetalleDevolucion extends Model
     protected $primaryKey = 'id_detalledevs';
 
     protected $fillable = [
-        'iddevolucion',
-        'fechadevolucion',
-        'totaldevolucion',
-        'motivodevolucion',
-        'accionestomada',
-        'idfactura',
-        'id_detalledevs',
-        'idproducto',
-        'producto',
-        'cantidad',
+        'cantidadD',
         'precio',
-        'importe_devolucion'
+        'idproducto',
+        'iddevolucion'
     ];
 
     // Relación con Devolución
     public function devolucion()
     {
-        return $this->belongsTo(Devoluciones::class, 'iddevolucion');
+        return $this->belongsTo(Devoluciones::class, 'iddevolucion', 'id_devolucion');
     }
 
     // Relación con Producto
     public function producto()
     {
-        return $this->belongsTo(Producto::class, 'idproducto');
+        return $this->belongsTo(Producto::class, 'idproducto', 'id_producto');
     }
 }

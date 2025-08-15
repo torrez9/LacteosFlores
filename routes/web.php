@@ -155,3 +155,14 @@ Route::get('/reportproveedor',
 [App\Http\Controllers\ReportControllerModeloproveedores::class, 'stockproveedorpdf'])
 ->name('reportproveedor');
 
+// En tu archivo web.php, asegúrate de tener estas rutas:
+
+// Ruta para el reporte HTML
+Route::get('/reportedevolucioncondetalles', 
+    [App\Http\Controllers\ReportControllerDevoluciondetalle::class, 'indexdevolucioncondetalles'])
+    ->name('reportedevolucioncondetalles');
+
+// Ruta para el PDF
+Route::get('/reportdevolucioncondetalles', 
+    [App\Http\Controllers\ReportControllerDevoluciondetalle::class, 'devolucioncondetallePdf'])
+    ->name('reportdevolucioncondetalles');
