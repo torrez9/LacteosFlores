@@ -29,53 +29,53 @@ Laravel elimina la complejidad del desarrollo al simplificar tareas comunes como
 
 ## 🚀 Comandos útiles para iniciar el proyecto
 
-
 Instalar dependencias de PHP con Composer
-
+```
 composer install
-
+```
 
 Copiar el archivo de entorno
-
+```
 cp .env.example .env
-
+```
 
 Generar la clave de la aplicación
-
+```
 php artisan key:generate
-
+```
 
 Ejecutar las migraciones de la base de datos
-
+```
 php artisan migrate
-
+```
 
 (Opcional: si quieres cargar datos de prueba)
-
+```
 php artisan migrate --seed
-
+```
 
 Levantar el servidor de desarrollo de Laravel
-
+```
 php artisan serve
-
-
+```
 Esto abrirá el proyecto en: http://127.0.0.1:8000
 
-🔹 Pasos para compilar los assets (con NPM)
+---
+
+### 🔹 Pasos para compilar los assets (con NPM)
 
 Instalar dependencias de Node.js
-
+```
 npm install
-
+```
 
 Levantar el entorno de desarrollo con Vite
-
+```
 npm run dev
-
-
+```
 Esto queda escuchando cambios en tiempo real (hot reload).
 
 Construir los assets para producción
-
+```
 npm run build
+```
