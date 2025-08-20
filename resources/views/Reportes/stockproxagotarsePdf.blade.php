@@ -127,7 +127,7 @@
             <tr>
                 <td>{{ $reporte->id_producto }}</td>
                 <td>{{ $reporte->descripcion }}</td>
-                <td>{{ $reporte->cantidadprod }}</td>
+                <td>{{ $reporte->stock_actual }}</td>
                 <td>{{ $reporte->proveedor }}</td>
                 <td>{{ $reporte->precioventa }}</td>
             </tr>

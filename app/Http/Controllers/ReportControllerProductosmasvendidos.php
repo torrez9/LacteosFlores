@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Models\DetalleFactura;
-use App\Models\Producto;
 use Barryvdh\DomPDF\Facade\Pdf;
 
 class ReportControllerProductosmasvendidos extends Controller

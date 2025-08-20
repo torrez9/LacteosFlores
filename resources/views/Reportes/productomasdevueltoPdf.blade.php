@@ -118,6 +118,7 @@
                 <th>Id Producto</th>
                 <th>Descripción</th>
                 <th>Cantidad Devuelta</th>
+                <th>Proveedor</th>
                 <th>Total Importe</th>
             </tr>
         </thead>
@@ -126,8 +127,9 @@
             <tr>
                 <td>{{ $reporte->id_producto }}</td>
                 <td>{{ $reporte->descripcion }}</td>
-                <td>{{ $reporte->cantidad_devuelta }}</td>
-                <td>{{ $reporte->total_importe }}</td>
+                <td>{{ $reporte->total_devuelto }}</td>
+                <td>{{ $reporte->proveedor }}</td>
+                <td>{{ $reporte->total_importe_devuelto }}</td>
             </tr>
             @endforeach
         </tbody>

@@ -118,9 +118,8 @@ Route::get('/reportproveedores',
 Route::get('/ReportePdfProductosMasComprados', 
 [App\Http\Controllers\ReportControllerProductomascomprados::class, 'stockProductoMasCompradosPDF'])
 ->name('ReportePdfProductosMasComprados');
-//reporteproductosmasvendidos
 Route::get('/ReportePdfProductosMasVendidos', 
-[App\Http\Controllers\ReportControllerProductosmasvendidos::class, 'stockProductoMasvendidosPDF'])
+[App\Http\Controllers\ReportControllerProductosmasvendidos::class, 'productosmasvendidosPdf'])
 ->name('ReportePdfProductosMasVendidos');
 //reporteproductosmasdevueltos
 Route::get('/ReportePdfProductosMasDevueltos', 
@@ -154,8 +153,6 @@ Route::get('/reportstockproxagotar',
 Route::get('/reportproveedor',
 [App\Http\Controllers\ReportControllerModeloproveedores::class, 'stockproveedorpdf'])
 ->name('reportproveedor');
-
-// En tu archivo web.php, asegúrate de tener estas rutas:
 
 // Ruta para el reporte HTML
 Route::get('/reportedevolucioncondetalles', 

@@ -26,16 +26,16 @@
                                 <th>Id usuario</th>
                                 <th>Nombres</th>
                                 <th>Total factura</th>
-                                <th>Monto total</th>
+                                <th>Promedio por Ventas</th>
                             </tr>
                         </thead>
                         <tbody>
                             @foreach ($reportes as $reporte)
                             <tr>
                                 <td>{{ $reporte->id_usuario }}</td>
-                                <td>{{ $reporte->nombre }}</td>
-                                <td>{{ $reporte->total_facturas }}</td>
-                                <td>{{ $reporte->monto_total }}</td>
+                                <td>{{ $reporte->nombre_completo }}</td>
+                                <td>{{ $reporte->total_facturado }}</td>
+                                <td>{{ $reporte->promedio_por_venta }}</td>
                             </tr>
                             @endforeach
                         </tbody>

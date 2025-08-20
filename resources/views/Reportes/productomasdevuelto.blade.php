@@ -26,6 +26,7 @@
                                 <th>ID de Producto</th>
                                 <th>Descripción</th>
                                 <th>Cantidad Devuelta</th>
+                                <th>Proveedor</th>
                                 <th>Total Importe</th>
                             </tr>
                         </thead>
@@ -34,15 +35,16 @@
                             <tr>
                                 <td>{{ $reporte->id_producto }}</td>
                                 <td>{{ $reporte->descripcion }}</td>
-                                <td>{{ $reporte->cantidad_devuelta }}</td>
-                                <td>{{ $reporte->total_importe }}</td>
+                                <td>{{ $reporte->total_devuelto }}</td>
+                                <td>{{ $reporte->proveedor }}</td>
+                                <td data-importe="{{ $reporte->total_importe_devuelto }}">C$ {{ number_format($reporte->total_importe_devuelto, 2) }}</td>
                             </tr>
                             @endforeach
                         </tbody>
                         <tfoot>
                             <tr style="background-color: #f2f2f2; color: #333; font-weight: bold;">
-                                <td colspan="3" style="text-align:right">Total:</td>
-                                <td id="total_importe"></td>
+                                <td colspan="4" style="text-align:right">Total:</td>
+                                <td id="total_importe_devuelto">C$ {{ number_format($reportes->sum('total_importe_devuelto'), 2) }}</td>
                             </tr>
                         </tfoot>
                     </table>
@@ -112,7 +114,7 @@
     }
     /* Estilo para el texto con gradiente */
     .nav-link-gradient {
-        background: linear-gradient(to right, #3a8edb, #1f5b96); /* Gradiente de azul primario a azul oscuro */
+        background: linear-gradient(to right, #3a8edb, #1f5b96); /* Gradiente de azul primario to azul oscuro */
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         display: inline-block;
@@ -167,15 +169,19 @@
             var table = $('#productosmasdevueltos').DataTable({
                 "paging": false,
                 "info": false,
-                "searching": true, // Habilitar búsqueda global
+                "searching": true,
                 "footerCallback": function(row, data, start, end, display) {
                     var api = this.api();
-                    var total = api.column(3, { page: 'current' }).data()
-                                .reduce(function(a, b) {
-                                    return parseFloat(a) + parseFloat(b);
-                                }, 0);
+                    var total = 0;
                     
-                    $('#total_importe').text('C$ ' + total.toFixed(2)); // Mostrar el total en el footer
+                    // Sumar los valores del atributo data-importe
+                    api.rows({ search: 'applied' }).every(function() {
+                        var rowData = this.data();
+                        var importe = $(rowData[4]).data('importe') || 0;
+                        total += parseFloat(importe);
+                    });
+                    
+                    $('#total_importe_devuelto').html('C$ ' + total.toFixed(2));
                 }
             });
 
@@ -185,10 +191,11 @@
             });
 
             // Inicializar el total al cargar la página
-            var initialTotal = table.column(3).data().reduce(function(a, b) {
-                return parseFloat(a) + parseFloat(b);
-            }, 0);
-            $('#total_importe').text('C$ ' + initialTotal.toFixed(2));
+            var initialTotal = 0;
+            $('td[data-importe]').each(function() {
+                initialTotal += parseFloat($(this).data('importe'));
+            });
+            $('#total_importe_devuelto').html('C$ ' + initialTotal.toFixed(2));
         });
     </script>
 @stop
