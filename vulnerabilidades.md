@@ -8,4 +8,3 @@ El análisis visual de estas capturas sugiere la necesidad de implementar medida
 
 ### Capturas de pantalla
 ![Vulnerabilidades 1](https://github.com/user-attachments/assets/6ea59da2-aabd-4974-aab7-ebfb666542c6)
-![Vulnerabilidades 2](https://github.com/user-attachments/assets/3bc5cc5f-d4ed-48f8-90ce-d6532f4bba23)
