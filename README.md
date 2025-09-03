@@ -28,5 +28,13 @@ Para corregir la vulnerabilidad detectada en **league/commonmark**, se realizaro
 - Se actualizó la librería a la versión segura **2.7.0 o superior** mediante Composer:
   ```bash
   composer require league/commonmark:^2.7
+![Solución aplicada](public/images/solucion1.jpg)
+![Solución aplicada](public/images/solucion2.jpg)
 
+Tras actualizar el paquete a una versión segura que corrige la vulnerabilidad, se volvió a ejecutar el análisis de seguridad del proyecto.  
+
+Como se muestra en la imagen a continuación, la vulnerabilidad crítica ya no está presente:
+
+- Antes: 7 vulnerabilidades  
+- Después: 5 vulnerabilidades (la vulnerabilidad crítica asociada a league/commonmark fue corregida)
 
