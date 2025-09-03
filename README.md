@@ -37,4 +37,8 @@ Como se muestra en la imagen a continuación, la vulnerabilidad crítica ya no e
 
 - Antes: 7 vulnerabilidades  
 - Después: 5 vulnerabilidades (la vulnerabilidad crítica asociada a league/commonmark fue corregida)
+  ## Solución aplicada
+![Solución aplicada](public/images/Solucionado.jpg)
+
+Con la actualización aplicada, se eliminó la vulnerabilidad en `league/commonmark` que podía permitir un ataque de denegación de servicio, mejorando la seguridad del proyecto.
 
