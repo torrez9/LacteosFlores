@@ -11,7 +11,7 @@ En el Proyecto se utilizo el comando 'composer Audit', para encontrar distintas 
 🔎 ¿Qué pasa?
 
 En las versiones afectadas de Laravel, es posible manipular variables de entorno (.env) a través de la query string de una URL en ciertas condiciones.
-En este caso la versión del Proyecto es :Laravel Framework 10.48.23; y esta vulnerabilidad es capaz de afectar las siguientes versiones:
+En este caso la versión del Proyecto es :Laravel Framework 10.48.23; Esta vulnerabilidad es capaz de afectar las siguientes versiones:
 
 ### 📌 Versiones afectadas:
 
