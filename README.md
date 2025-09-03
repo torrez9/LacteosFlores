@@ -1,81 +1,26 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Logo de Laravel"></a></p>
-
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Estado de compilación"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Descargas Totales"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Última Versión Estable"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="Licencia"></a>
-</p>
-
-# ⏰ Proyecto de Alarma con Laravel
-
-Este proyecto está desarrollado con **Laravel**, un framework moderno de PHP que facilita la creación de aplicaciones web robustas, seguras y con una sintaxis elegante.  
+. **Diagnóstico de las vulnerabilidades
+El proceso comenzó con la identificación de dos vulnerabilidades de seguridad en los paquetes de Symfony: una de **redirección abierta** (CVE-2024-50345) y otra, de mayor riesgo, de **secuestro de ejecución de comandos** (CVE-2024-51736).
 
 ---
 
-## 📖 Acerca de Laravel
+### 2.**Intento de Solución (1)**
+Para solucionar el error de alta severidad, el primer paso fue intentar actualizar el paquete `symfony/process` directamente a la versión con el parche de seguridad usando el comando:
+`composer require symfony/process:^7.1.7`
 
-Laravel elimina la complejidad del desarrollo al simplificar tareas comunes como:
-
-- ⚡ Enrutamiento simple y rápido.  
-- 📦 Contenedor de inyección de dependencias.  
-- 🗄️ Múltiples back-ends para sesiones y caché.  
-- 📝 ORM Eloquent expresivo e intuitivo.  
-- 🔄 Migraciones de base de datos portables.  
-- 🧵 Procesamiento de trabajos en segundo plano.  
-- 📡 Difusión de eventos en tiempo real.  
+* **Resultado:** El comando falló. El gestor de dependencias de Composer no pudo resolver los requisitos porque el paquete principal, **`laravel/framework`**, estaba bloqueado en una versión antigua que no era compatible con la nueva versión de `symfony/process`.
 
 ---
 
-## 🚀 Comandos útiles para iniciar el proyecto
+### 3.**Intento de Solución (2)**
+El siguiente paso fue intentar una actualización más flexible usando el flag `--with-all-dependencies`, lo que permite a Composer actualizar otros paquetes para resolver conflictos. El comando ejecutado fue:
+`composer require symfony/process:^7.1.7 --with-all-dependencies`
 
-Instalar dependencias de PHP con Composer
-```
-composer install
-```
-
-Copiar el archivo de entorno
-```
-cp .env.example .env
-```
-
-Generar la clave de la aplicación
-```
-php artisan key:generate
-```
-
-Ejecutar las migraciones de la base de datos
-```
-php artisan migrate
-```
-
-(Opcional: si quieres cargar datos de prueba)
-```
-php artisan migrate --seed
-```
-
-Levantar el servidor de desarrollo de Laravel
-```
-php artisan serve
-```
-Esto abrirá el proyecto en: http://127.0.0.1:8000
+* **Resultado:** El comando falló de nuevo. La bandera no fue suficiente para solucionar el problema porque no puede forzar la actualización de un paquete raíz como `laravel/framework` si este está bloqueado y no se solicita su actualización explícitamente.
 
 ---
 
-### 🔹 Pasos para compilar los assets (con NPM)
+### 4.**Solución Exitosa**
+La única forma de resolver el conflicto fue actualizar ambos paquetes de forma explícita. El comando que finalmente resuelve el problema es:
+`composer update laravel/framework symfony/process`
 
-Instalar dependencias de Node.js
-```
-npm install
-```
-
-Levantar el entorno de desarrollo con Vite
-```
-npm run dev
-```
-Esto queda escuchando cambios en tiempo real (hot reload).
-
-Construir los assets para producción
-```
-npm run build
-```
+* **Resultado:** Este comando le indica a Composer que actualice ambos paquetes a sus versiones más recientes y compatibles, lo que permite la instalación de la versión parchada de `symfony/process` y, al mismo tiempo, mantiene la integridad de todas las dependencias del proyecto.
