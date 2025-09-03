@@ -15,10 +15,15 @@ En este caso la versión del Proyecto es :Laravel Framework 10.48.23; y esta vul
 ### 📌 Versiones afectadas:
 
 <6.20.45
+
 >=7.0.0 <7.30.7
+
 >=8.0.0 <8.83.28
+
 >=9.0.0 <9.52.17
+
 >=10.0.0 <10.48.23
+
 >=11.0.0 <11.31.0
 
 
