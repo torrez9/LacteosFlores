@@ -2,9 +2,9 @@ name: Laravel (Mario)
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "Mario" ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ "Mario" ]
 
 jobs:
   laravel-tests:
