@@ -1,0 +1,79 @@
+name: Mangel_Chequeo de sintaxis y estilo php #Lint  
+
+
+on:
+  push:
+    branches: [ "Mangel" ]        # Se ejecuta cuando haces push a la rama main
+  pull_request:
+    branches: [ "Mangel" ]        # También al crear un pull request hacia main
+
+jobs:
+  # --- FASE 1: LINT ---
+  lint:
+    runs-on: ubuntu-latest      # El job se ejecuta en un servidor Ubuntu que provee GitHub
+
+    steps:
+      # Descarga el repositorio en el runner
+      - uses: actions/checkout@v4
+
+      # Instala PHP en el entorno
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.0'    # Laravel 8/9 funcionan bien con PHP 8.0
+
+      # Instala dependencias de Composer (sin ejecutar scripts)
+      - name: Install Composer dependencies
+        run: composer install --no-scripts --no-progress --prefer-dist
+
+      # Verifica errores de sintaxis en todos los archivos .php
+      - name: PHP Syntax Check (Lint)
+        run: find . -type f -name "*.php" -exec php -l {} \;
+
+      # Verifica que el código cumpla con el estándar de estilo PSR-12
+      - name: PHP Code Style Check
+        run: vendor/bin/phpcs --standard=PSR12 app/ routes/
+
+  # --- FASE 2: TESTS ---
+  tests:
+    runs-on: ubuntu-latest
+    needs: lint                 # Este job solo se ejecuta si la fase de Lint pasa correctamente
+
+    steps:
+      # Descarga el repositorio otra vez (cada job es independiente)
+      - uses: actions/checkout@v4
+
+      # Instala PHP
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.0'
+
+      # Crea el archivo .env copiando desde .env.example si no existe
+      - name: Copy .env
+        run: php -r "file_exists('.env') || copy('.env.example', '.env');"
+
+      # Instala dependencias de Composer
+      - name: Install Dependencies
+        run: composer install --no-scripts --no-progress --prefer-dist
+
+      # Genera la clave de aplicación APP_KEY en el .env
+      - name: Generate key
+        run: php artisan key:generate
+
+      # Da permisos de escritura a storage/ y bootstrap/cache/
+      - name: Directory Permissions
+        run: chmod -R 777 storage bootstrap/cache
+
+      # Crea una base de datos SQLite vacía en database/database.sqlite
+      - name: Create Database
+        run: |
+          mkdir -p database
+          touch database/database.sqlite
+
+      # Ejecuta las pruebas unitarias y funcionales con PHPUnit/Pest
+      - name: Run Tests
+        env:
+          DB_CONNECTION: sqlite               # Se fuerza a usar SQLite
+          DB_DATABASE: database/database.sqlite
+        run: php artisan test
