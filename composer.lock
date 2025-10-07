@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "9543575e1d2a0a2a83b8f2d24bb7c761",
+    "content-hash": "53e9240bc57ecb801adc1f04cba31551",
     "packages": [
         {
             "name": "almasaeed2010/adminlte",
@@ -1293,16 +1293,16 @@
         },
         {
             "name": "laravel/framework",
-            "version": "v10.48.10",
+            "version": "v10.48.23",
             "source": {
                 "type": "git",
                 "url": "https://github.com/laravel/framework.git",
-                "reference": "91e2b9e218afa4e5c377510faa11957042831ba3"
+                "reference": "625269ca4881d2b50eded2045cb930960a181d98"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/laravel/framework/zipball/91e2b9e218afa4e5c377510faa11957042831ba3",
-                "reference": "91e2b9e218afa4e5c377510faa11957042831ba3",
+                "url": "https://api.github.com/repos/laravel/framework/zipball/625269ca4881d2b50eded2045cb930960a181d98",
+                "reference": "625269ca4881d2b50eded2045cb930960a181d98",
                 "shasum": ""
             },
             "require": {
@@ -1496,7 +1496,7 @@
                 "issues": "https://github.com/laravel/framework/issues",
                 "source": "https://github.com/laravel/framework"
             },
-            "time": "2024-04-30T12:52:59+00:00"
+            "time": "2024-11-12T15:39:10+00:00"
         },
         {
             "name": "laravel/prompts",
@@ -9207,12 +9207,12 @@
     ],
     "aliases": [],
     "minimum-stability": "stable",
-    "stability-flags": [],
+    "stability-flags": {},
     "prefer-stable": true,
     "prefer-lowest": false,
     "platform": {
         "php": "^8.1"
     },
-    "platform-dev": [],
+    "platform-dev": {},
     "plugin-api-version": "2.6.0"
 }
