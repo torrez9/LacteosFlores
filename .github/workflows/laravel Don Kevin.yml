@@ -1,0 +1,58 @@
+name: Laravel Tests
+
+on:
+  push:
+    branches: [ "Kevin" ]
+  pull_request:
+    branches: [ "Kevin" ]
+
+jobs:
+  laravel-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1️⃣ Configurar PHP
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.0'
+          extensions: mbstring, bcmath, intl, pdo_sqlite
+          coverage: none
+
+      # 2️⃣ Clonar el código del repositorio
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 3️⃣ Copiar .env si no existe
+      - name: Copy .env
+        run: php -r "file_exists('.env') || copy('.env.example', '.env');"
+
+      # 4️⃣ Instalar dependencias con Composer
+      - name: Install Dependencies
+        run: composer install -q --no-ansi --no-interaction --no-scripts --no-progress --prefer-dist
+
+      # 5️⃣ Generar clave de aplicación
+      - name: Generate Application Key
+        run: php artisan key:generate
+
+      # 6️⃣ Asignar permisos a storage y cache
+      - name: Directory Permissions
+        run: chmod -R 777 storage bootstrap/cache
+
+      # 7️⃣ Crear base de datos SQLite temporal
+      - name: Create Database
+        run: |
+          mkdir -p database
+          touch database/database.sqlite
+
+      # 8️⃣ Ejecutar pruebas con PHPUnit o Pest
+      - name: Run Tests
+        env:
+          DB_CONNECTION: sqlite
+          DB_DATABASE: database/database.sqlite
+        run: |
+          if [ -f vendor/bin/pest ]; then
+            vendor/bin/pest --colors=always
+          else
+            php artisan test --colors=always
+          fi
