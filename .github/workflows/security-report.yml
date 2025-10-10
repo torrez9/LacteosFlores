@@ -1,63 +1,82 @@
-name: Security Report
+name: Code Analysis
 
 on:
-  workflow_run:
-    workflows: ["Code Analysis", "Dependency Scan"]
-    types:
-      - completed
+  push:
+    branches: [ "Workflows" ]
+  pull_request:
+    branches: [ "Workflows" ]
 
 jobs:
-  consolidate-report:
-    name: Consolidate Security Results
+  sast-analysis:
+    name: Static Application Security Testing (SAST)
     runs-on: ubuntu-latest
-    if: ${{ github.ref_name == 'Workflows' }} # Solo ejecuta si la rama es Workflows
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Download SAST and Dependency artifacts
-        uses: actions/download-artifact@v4
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
         with:
-          path: security-results
+          php-version: '8.2'
 
-      - name: Generate consolidated report
+      - name: Install Composer dependencies
+        run: composer install -q --no-interaction --no-progress --prefer-dist
+
+      # 1️⃣ Semgrep (auditoría de seguridad)
+      - name: Run Semgrep Security Scan
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: p/php
+          generateSarif: true
+          output: semgrep-results.sarif
+
+      # 2️⃣ PHPStan (análisis estático)
+      - name: Install PHPStan
+        run: composer require --dev phpstan/phpstan
+
+      - name: Run PHPStan Analysis
+        run: vendor/bin/phpstan analyse --no-progress --error-format=table || true
+
+      # 3️⃣ Evaluar vulnerabilidades críticas
+      - name: Evaluate critical vulnerabilities
         run: |
-          mkdir -p docs
-          REPORT="docs/security-assessment.md"
-          echo "# 📊 Informe Consolidado de Seguridad - Laravel App" > $REPORT
-          echo "Fecha: $(date)" >> $REPORT
-          echo "Repositorio: $GITHUB_REPOSITORY" >> $REPORT
-          echo "Rama: $GITHUB_REF_NAME" >> $REPORT
-          echo "" >> $REPORT
-          echo "## Resumen Ejecutivo" >> $REPORT
-          echo "- Análisis de Código: generado por CodeQL y Semgrep" >> $REPORT
-          echo "- Escaneo de Dependencias: Composer Audit y OWASP DC" >> $REPORT
-          echo "" >> $REPORT
-          echo "## Resultados Recientes" >> $REPORT
-          echo "### Análisis de Código" >> $REPORT
-          cat docs/code-analysis-summary.md >> $REPORT || echo "Sin resultados previos de SAST" >> $REPORT
-          echo "" >> $REPORT
-          echo "### Dependencias" >> $REPORT
-          cat docs/dependency-scan-summary.md >> $REPORT || echo "Sin resultados previos de dependencias" >> $REPORT
-          echo "" >> $REPORT
-          echo "## Recomendaciones" >> $REPORT
-          echo "1. Revisar vulnerabilidades críticas detectadas en código o librerías." >> $REPORT
-          echo "2. Actualizar dependencias vulnerables inmediatamente." >> $REPORT
-          echo "3. Implementar validaciones adicionales en entrada de datos." >> $REPORT
-          echo "" >> $REPORT
-          echo "## Generado automáticamente por GitHub Actions" >> $REPORT
+          echo "Evaluando vulnerabilidades críticas..."
+          if grep -qi "CRITICAL" semgrep-results.sarif; then
+            echo "❌ Vulnerabilidades críticas detectadas. Pipeline fallará."
+            exit 1
+          else
+            echo "✅ Sin vulnerabilidades críticas detectadas."
+          fi
 
-      - name: Upload consolidated report
+      # 4️⃣ Guardar artefactos y resumen
+      - name: Upload analysis artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: security-assessment-report
-          path: docs/security-assessment.md
+          name: sast-analysis-results
+          path: semgrep-results.sarif
 
-      - name: Commit and Push Report
+      - name: Generate code analysis summary
+        run: |
+          mkdir -p docs
+          REPORT="docs/code-analysis-summary.md"
+          echo "# 🔍 Resumen de Análisis de Código" > $REPORT
+          echo "Fecha: $(date)" >> $REPORT
+          echo "- Herramientas: Semgrep, PHPStan" >> $REPORT
+          echo "- Rama: $GITHUB_REF_NAME" >> $REPORT
+          echo "" >> $REPORT
+          if grep -qi "CRITICAL" semgrep-results.sarif; then
+            echo "❌ Se detectaron vulnerabilidades críticas." >> $REPORT
+          else
+            echo "✅ Sin vulnerabilidades críticas detectadas." >> $REPORT
+          fi
+          echo "" >> $REPORT
+          echo "Resultados detallados disponibles en los artefactos de la acción." >> $REPORT
+
+      - name: Commit and Push Summary
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add docs/security-assessment.md
-          git commit -m "📈 Informe de seguridad consolidado actualizado"
+          git add docs/code-analysis-summary.md
+          git commit -m "📄 Resumen automático de análisis de código"
           git push origin $GITHUB_REF_NAME || echo "No hay cambios nuevos"
