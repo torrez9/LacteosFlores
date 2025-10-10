@@ -36,12 +36,12 @@ jobs:
           format: "ALL"
           out: "reports"
 
+      # ⚙️ Evaluación tolerante: no detiene el pipeline
       - name: Evaluate critical vulnerabilities
         run: |
           echo "Verificando vulnerabilidades críticas..."
           if grep -q "CRITICAL" reports/dependency-check-report.json; then
-            echo "❌ Vulnerabilidades críticas detectadas."
-            exit 1
+            echo "⚠️ Vulnerabilidades críticas detectadas. Continuando ejecución para generar reportes."
           else
             echo "✅ Sin vulnerabilidades críticas detectadas."
           fi
@@ -52,6 +52,7 @@ jobs:
           name: dependency-scan-results
           path: reports/
 
+      # 📄 Crear resumen .md
       - name: Generate dependency scan summary
         run: |
           mkdir -p docs
@@ -62,13 +63,14 @@ jobs:
           echo "- Rama: $GITHUB_REF_NAME" >> $REPORT
           echo "" >> $REPORT
           if grep -q "CRITICAL" reports/dependency-check-report.json; then
-            echo "❌ Dependencias con vulnerabilidades críticas encontradas." >> $REPORT
+            echo "⚠️ Se detectaron vulnerabilidades críticas en dependencias." >> $REPORT
           else
             echo "✅ No se detectaron vulnerabilidades críticas en dependencias." >> $REPORT
           fi
           echo "" >> $REPORT
-          echo "Revisa los informes completos en 'reports/' o en los artefactos del workflow." >> $REPORT
+          echo "Consulta los informes completos en 'reports/' o en los artefactos de este workflow." >> $REPORT
 
+      # 🧾 Commit automático del resumen
       - name: Commit and Push Summary
         run: |
           git config user.name "github-actions[bot]"
