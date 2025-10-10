@@ -1,0 +1,63 @@
+name: Security Report
+
+on:
+  workflow_run:
+    workflows: ["Code Analysis", "Dependency Scan"]
+    types:
+      - completed
+
+jobs:
+  consolidate-report:
+    name: Consolidate Security Results
+    runs-on: ubuntu-latest
+    if: ${{ github.ref_name == 'Workflows' }} # Solo ejecuta si la rama es Workflows
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download SAST and Dependency artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: security-results
+
+      - name: Generate consolidated report
+        run: |
+          mkdir -p docs
+          REPORT="docs/security-assessment.md"
+          echo "# 📊 Informe Consolidado de Seguridad - Laravel App" > $REPORT
+          echo "Fecha: $(date)" >> $REPORT
+          echo "Repositorio: $GITHUB_REPOSITORY" >> $REPORT
+          echo "Rama: $GITHUB_REF_NAME" >> $REPORT
+          echo "" >> $REPORT
+          echo "## Resumen Ejecutivo" >> $REPORT
+          echo "- Análisis de Código: generado por CodeQL y Semgrep" >> $REPORT
+          echo "- Escaneo de Dependencias: Composer Audit y OWASP DC" >> $REPORT
+          echo "" >> $REPORT
+          echo "## Resultados Recientes" >> $REPORT
+          echo "### Análisis de Código" >> $REPORT
+          cat docs/code-analysis-summary.md >> $REPORT || echo "Sin resultados previos de SAST" >> $REPORT
+          echo "" >> $REPORT
+          echo "### Dependencias" >> $REPORT
+          cat docs/dependency-scan-summary.md >> $REPORT || echo "Sin resultados previos de dependencias" >> $REPORT
+          echo "" >> $REPORT
+          echo "## Recomendaciones" >> $REPORT
+          echo "1. Revisar vulnerabilidades críticas detectadas en código o librerías." >> $REPORT
+          echo "2. Actualizar dependencias vulnerables inmediatamente." >> $REPORT
+          echo "3. Implementar validaciones adicionales en entrada de datos." >> $REPORT
+          echo "" >> $REPORT
+          echo "## Generado automáticamente por GitHub Actions" >> $REPORT
+
+      - name: Upload consolidated report
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-assessment-report
+          path: docs/security-assessment.md
+
+      - name: Commit and Push Report
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/security-assessment.md
+          git commit -m "📈 Informe de seguridad consolidado actualizado"
+          git push origin $GITHUB_REF_NAME || echo "No hay cambios nuevos"

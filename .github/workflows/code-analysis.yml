@@ -1,0 +1,86 @@
+name: Code Analysis
+
+on:
+  push:
+    branches: [ "Workflows" ]
+  pull_request:
+    branches: [ "Workflows" ]
+
+jobs:
+  sast-analysis:
+    name: Static Application Security Testing (SAST)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+
+      - name: Install Composer dependencies
+        run: composer install -q --no-interaction --no-progress --prefer-dist
+
+      # CodeQL
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: php
+
+      - name: Analyze with CodeQL
+        uses: github/codeql-action/analyze@v3
+        with:
+          output: codeql-results
+
+      # Semgrep
+      - name: Run Semgrep Security Scan
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: p/security-audit
+          generateSarif: true
+          output: semgrep-results.sarif
+
+      - name: Evaluate critical vulnerabilities
+        run: |
+          echo "Evaluando vulnerabilidades críticas..."
+          if grep -qi "CRITICAL" semgrep-results.sarif; then
+            echo "❌ Vulnerabilidades críticas detectadas. Pipeline fallará."
+            exit 1
+          else
+            echo "✅ Sin vulnerabilidades críticas detectadas."
+          fi
+
+      - name: Upload analysis artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sast-analysis-results
+          path: |
+            semgrep-results.sarif
+            codeql-results/
+
+      - name: Generate code analysis summary
+        run: |
+          mkdir -p docs
+          REPORT="docs/code-analysis-summary.md"
+          echo "# 🔍 Resumen de Análisis de Código" > $REPORT
+          echo "Fecha: $(date)" >> $REPORT
+          echo "- Herramientas: CodeQL, Semgrep" >> $REPORT
+          echo "- Rama: $GITHUB_REF_NAME" >> $REPORT
+          echo "" >> $REPORT
+          if grep -qi "CRITICAL" semgrep-results.sarif; then
+            echo "❌ Se detectaron vulnerabilidades críticas." >> $REPORT
+          else
+            echo "✅ Sin vulnerabilidades críticas detectadas." >> $REPORT
+          fi
+          echo "" >> $REPORT
+          echo "Resultados detallados disponibles en los artefactos de la acción." >> $REPORT
+
+      - name: Commit and Push Summary
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/code-analysis-summary.md
+          git commit -m "📄 Resumen automático de análisis de código"
+          git push origin $GITHUB_REF_NAME || echo "No hay cambios nuevos"

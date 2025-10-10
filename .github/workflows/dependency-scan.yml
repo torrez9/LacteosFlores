@@ -1,0 +1,78 @@
+name: Dependency Scan
+
+on:
+  push:
+    branches: [ "Workflows" ]
+  pull_request:
+    branches: [ "Workflows" ]
+
+jobs:
+  dependency-scan:
+    name: Dependency Vulnerability Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+
+      - name: Install Composer dependencies
+        run: composer install -q --no-interaction --no-progress --prefer-dist
+
+      - name: Run Composer Audit
+        run: |
+          mkdir -p reports
+          composer audit --format=json > reports/composer-audit.json || true
+
+      - name: Run OWASP Dependency Check
+        uses: dependency-check/Dependency-Check_Action@main
+        with:
+          project: "Laravel App"
+          path: "./"
+          format: "ALL"
+          out: "reports"
+
+      - name: Evaluate critical vulnerabilities
+        run: |
+          echo "Verificando vulnerabilidades críticas..."
+          if grep -q "CRITICAL" reports/dependency-check-report.json; then
+            echo "❌ Vulnerabilidades críticas detectadas."
+            exit 1
+          else
+            echo "✅ Sin vulnerabilidades críticas detectadas."
+          fi
+
+      - name: Upload dependency reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-scan-results
+          path: reports/
+
+      - name: Generate dependency scan summary
+        run: |
+          mkdir -p docs
+          REPORT="docs/dependency-scan-summary.md"
+          echo "# 📦 Resumen de Análisis de Dependencias" > $REPORT
+          echo "Fecha: $(date)" >> $REPORT
+          echo "- Herramientas: Composer Audit, OWASP Dependency-Check" >> $REPORT
+          echo "- Rama: $GITHUB_REF_NAME" >> $REPORT
+          echo "" >> $REPORT
+          if grep -q "CRITICAL" reports/dependency-check-report.json; then
+            echo "❌ Dependencias con vulnerabilidades críticas encontradas." >> $REPORT
+          else
+            echo "✅ No se detectaron vulnerabilidades críticas en dependencias." >> $REPORT
+          fi
+          echo "" >> $REPORT
+          echo "Revisa los informes completos en 'reports/' o en los artefactos del workflow." >> $REPORT
+
+      - name: Commit and Push Summary
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/dependency-scan-summary.md
+          git commit -m "📄 Resumen automático de escaneo de dependencias"
+          git push origin $GITHUB_REF_NAME || echo "No hay cambios nuevos"
