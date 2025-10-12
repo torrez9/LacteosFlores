@@ -1,10 +1,10 @@
-name: escaneeo de Dependencias
+name: Dependency Security Scan
 
 on:
   push:
-    branches: [ "main", "develop", "Workflows" ]
+    branches: [ "Workflows" ]
   pull_request:
-    branches: [ "main", "develop", "Workflows" ]
+    branches: [ "Workflows" ]
   schedule:
     # Ejecución programada semanal para análisis preventivo
     - cron: '0 3 * * 2' # Todos los martes a las 3 AM
@@ -64,7 +64,30 @@ jobs:
           composer audit --format=json > reports/composer-audit.json 2>/dev/null || echo '{"advisories": {}}' > reports/composer-audit.json
           composer audit --format=table || echo "Composer audit completado"
 
-      # OWASP Dependency Check - Análisis completo
+      # Crear archivo de supresiones si no existe
+      - name: Create suppression file if missing
+        run: |
+          mkdir -p .github
+          if [ ! -f ".github/dependency-check-suppressions.xml" ]; then
+            cat > .github/dependency-check-suppressions.xml << 'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <suppressions xmlns="https://jeremylong.github.io/DependencyCheck/dependency-suppression.1.3.xsd">
+              <!-- Ejemplo de supresión para falsos positivos -->
+              <!--
+              <suppress>
+                  <notes><![CDATA[Supresión para falso positivo en librería específica]]></notes>
+                  <packageUrl regex="true">^pkg:composer/example/package@.*$</packageUrl>
+                  <vulnerabilityName regex="true">.*</vulnerabilityName>
+              </suppress>
+              -->
+          </suppressions>
+          EOF
+            echo "Archivo de supresiones creado en .github/dependency-check-suppressions.xml"
+          else
+            echo "Archivo de supresiones ya existe"
+          fi
+
+      # OWASP Dependency Check - Análisis completo CORREGIDO
       - name: Run OWASP Dependency Check
         uses: dependency-check/Dependency-Check_Action@main
         with:
@@ -76,7 +99,7 @@ jobs:
             --enableRetired
             --failOnCVSS 7
             --scan vendor/
-            --suppressionFiles ".github/dependency-check-suppressions.xml"
+            --suppression ".github/dependency-check-suppressions.xml"
 
       # EVALUACION DE VULNERABILIDADES MEJORADA
       - name: Evaluate dependency vulnerabilities
@@ -87,37 +110,41 @@ jobs:
           TOTAL_COUNT=0
           SCAN_STATUS="clean"
 
+          # Instalar jq si no está disponible
+          if ! command -v jq &> /dev/null; then
+            echo "Instalando jq para procesamiento JSON..."
+            sudo apt-get update && sudo apt-get install -y jq
+          fi
+
           # Analizar resultados de Composer Audit
           if [ -f "reports/composer-audit.json" ]; then
             echo "Analizando resultados de Composer Audit..."
-            if command -v jq >/dev/null 2>&1; then
-              COMPOSER_ADVISORIES=$(jq -r '.advisories | length' reports/composer-audit.json 2>/dev/null || echo 0)
-              TOTAL_COUNT=$((TOTAL_COUNT + COMPOSER_ADVISORIES))
-              echo "Composer Audit - Advisory reports: $COMPOSER_ADVISORIES"
-            fi
+            COMPOSER_ADVISORIES=$(jq -r '.advisories | length' reports/composer-audit.json 2>/dev/null || echo 0)
+            TOTAL_COUNT=$((TOTAL_COUNT + COMPOSER_ADVISORIES))
+            echo "Composer Audit - Advisory reports: $COMPOSER_ADVISORIES"
           fi
 
           # Analizar resultados de OWASP Dependency Check
           if [ -f "reports/dependency-check-report.json" ]; then
             echo "Analizando resultados de OWASP Dependency Check..."
-            if command -v jq >/dev/null 2>&1; then
-              # Contar vulnerabilidades por severidad
-              CRITICAL_COUNT=$(jq -r '.dependencies[]?.vulnerabilities[]? | select(.severity == "CRITICAL") | .name' reports/dependency-check-report.json 2>/dev/null | sort -u | wc -l || echo 0)
-              HIGH_COUNT=$(jq -r '.dependencies[]?.vulnerabilities[]? | select(.severity == "HIGH") | .name' reports/dependency-check-report.json 2>/dev/null | sort -u | wc -l || echo 0)
-              ALL_VULNS=$(jq -r '.dependencies[]?.vulnerabilities[]?.name' reports/dependency-check-report.json 2>/dev/null | sort -u | wc -l || echo 0)
-              
-              TOTAL_COUNT=$((TOTAL_COUNT + ALL_VULNS))
-              
-              echo "OWASP Dependency Check - Vulnerabilidades:"
-              echo "  Criticas: $CRITICAL_COUNT"
-              echo "  Altas: $HIGH_COUNT"
-              echo "  Total: $ALL_VULNS"
-            else
-              # Método alternativo con grep
-              CRITICAL_COUNT=$(grep -oi '"severity":"CRITICAL"' reports/dependency-check-report.json | wc -l || echo 0)
-              HIGH_COUNT=$(grep -oi '"severity":"HIGH"' reports/dependency-check-report.json | wc -l || echo 0)
-              echo "OWASP Dependency Check - Vulnerabilidades criticas: $CRITICAL_COUNT, Altas: $HIGH_COUNT"
-            fi
+            
+            # Contar vulnerabilidades por severidad
+            CRITICAL_COUNT=$(jq -r '.dependencies[]?.vulnerabilities[]? | select(.severity == "CRITICAL") | .name' reports/dependency-check-report.json 2>/dev/null | sort -u | wc -l || echo 0)
+            HIGH_COUNT=$(jq -r '.dependencies[]?.vulnerabilities[]? | select(.severity == "HIGH") | .name' reports/dependency-check-report.json 2>/dev/null | sort -u | wc -l || echo 0)
+            MEDIUM_COUNT=$(jq -r '.dependencies[]?.vulnerabilities[]? | select(.severity == "MEDIUM") | .name' reports/dependency-check-report.json 2>/dev/null | sort -u | wc -l || echo 0)
+            LOW_COUNT=$(jq -r '.dependencies[]?.vulnerabilities[]? | select(.severity == "LOW") | .name' reports/dependency-check-report.json 2>/dev/null | sort -u | wc -l || echo 0)
+            
+            ALL_VULNS=$((CRITICAL_COUNT + HIGH_COUNT + MEDIUM_COUNT + LOW_COUNT))
+            TOTAL_COUNT=$((TOTAL_COUNT + ALL_VULNS))
+            
+            echo "OWASP Dependency Check - Vulnerabilidades:"
+            echo "  Criticas: $CRITICAL_COUNT"
+            echo "  Altas: $HIGH_COUNT"
+            echo "  Medias: $MEDIUM_COUNT"
+            echo "  Bajas: $LOW_COUNT"
+            echo "  Total: $ALL_VULNS"
+          else
+            echo "Advertencia: No se encontró el archivo dependency-check-report.json"
           fi
 
           # Determinar estado del escaneo
@@ -187,6 +214,7 @@ jobs:
           echo "- **Purpose:** Comprehensive vulnerability scanning" >> $REPORT
           echo "- **Scope:** All dependencies in vendor/ directory" >> $REPORT
           echo "- **CVSS Threshold:** 7.0 (Medium and above)" >> $REPORT
+          echo "- **Suppression File:** .github/dependency-check-suppressions.xml" >> $REPORT
           echo "" >> $REPORT
           
           # Hallazgos y Recomendaciones

@@ -1,4 +1,4 @@
-name: Analisis de Seguridad y Pipeline
+name: Security Analysis Pipeline
 
 on:
   push:
@@ -23,7 +23,7 @@ permissions:
 jobs:
   # ANÁLISIS ESTÁTICO DE SEGURIDAD (SAST)
   sast-analysis:
-    name: 🔍 Static Application Security Testing
+    name: Static Application Security Testing
     runs-on: ubuntu-latest
     outputs:
       # Outputs para usar en otros jobs
@@ -57,8 +57,8 @@ jobs:
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
         with:
-          # Lenguaje corregido - usar 'javascript' como alternativa o omitir para detección automática
-          languages: javascript # PHP no está soportado directamente, usamos JavaScript como alternativa
+          # Lenguaje corregido - usar 'javascript' como alternativa
+          languages: javascript
           queries: security-extended
           
       - name: Build application for CodeQL
@@ -101,21 +101,21 @@ jobs:
       # ANÁLISIS DE ARCHIVOS DE CONFIGURACIÓN
       - name: Security Config Analysis
         run: |
-          echo "🔍 Analizando configuración de seguridad..."
+          echo "Analizando configuración de seguridad..."
           
           # Verificar archivos de configuración críticos
           if [ -f "config/app.php" ]; then
-            echo "✓ Configuración de app encontrada"
+            echo "Configuración de app encontrada"
             DEBUG_SETTING=$(grep -i "debug" config/app.php || echo "APP_DEBUG=false")
             echo "Configuración DEBUG: $DEBUG_SETTING"
           fi
           
           if [ -f ".env.example" ]; then
-            echo "✓ Archivo .env.example verificado"
+            echo "Archivo .env.example verificado"
           fi
 
           if [ -f ".env" ]; then
-            echo "⚠️ Archivo .env detectado - asegúrate de no commitear datos sensibles"
+            echo "Advertencia: Archivo .env detectado - asegurate de no commitear datos sensibles"
           fi
 
           # Crear directorio de reports si no existe
@@ -129,6 +129,12 @@ jobs:
           HIGH_COUNT=0
           SECURITY_SCORE=100
           
+          # Instalar jq si no está disponible
+          if ! command -v jq &> /dev/null; then
+            echo "Instalando jq para procesamiento JSON..."
+            sudo apt-get update && sudo apt-get install -y jq
+          fi
+          
           # Función para contar vulnerabilidades en SARIF
           count_sarif_vulnerabilities() {
             local file=$1
@@ -136,15 +142,8 @@ jobs:
               echo "Analizando $file"
               
               # Contar por nivel de severidad en SARIF
-              if command -v jq >/dev/null 2>&1; then
-                # Método más preciso con jq si está disponible
-                local errors=$(jq -r '.runs[0].results[]? | select(.level=="error") | .ruleId' "$file" 2>/dev/null | wc -l || echo 0)
-                local warnings=$(jq -r '.runs[0].results[]? | select(.level=="warning") | .ruleId' "$file" 2>/dev/null | wc -l || echo 0)
-              else
-                # Método alternativo con grep
-                local errors=$(grep -oi '"level":"error"' "$file" | wc -l || echo 0)
-                local warnings=$(grep -oi '"level":"warning"' "$file" | wc -l || echo 0)
-              fi
+              local errors=$(jq -r '.runs[0].results[]? | select(.level=="error") | .ruleId' "$file" 2>/dev/null | wc -l || echo 0)
+              local warnings=$(jq -r '.runs[0].results[]? | select(.level=="warning") | .ruleId' "$file" 2>/dev/null | wc -l || echo 0)
               
               # Considerar errores como críticos y warnings como alta severidad
               CRITICAL_COUNT=$((CRITICAL_COUNT + errors))
@@ -157,20 +156,15 @@ jobs:
           }
           
           # Evaluar resultados de Semgrep
-          echo "📋 Evaluando resultados de Semgrep..."
+          echo "Evaluando resultados de Semgrep..."
           count_sarif_vulnerabilities "reports/semgrep-results.sarif"
           count_sarif_vulnerabilities "reports/semgrep-php-results.sarif"
           
           # Evaluar resultados de PHPStan
           if [ -f "reports/phpstan-results.json" ]; then
-            echo "📋 Evaluando resultados de PHPStan..."
-            if command -v jq >/dev/null 2>&1; then
-              PHPSTAN_ERRORS=$(jq -r '.totals.errors // 0' reports/phpstan-results.json 2>/dev/null || echo 0)
-              PHPSTAN_FILE_ERRORS=$(jq -r '.totals.file_errors // 0' reports/phpstan-results.json 2>/dev/null || echo 0)
-            else
-              PHPSTAN_ERRORS=$(grep -oi '"errors":' reports/phpstan-results.json | head -1 | grep -o '[0-9]*' || echo 0)
-              PHPSTAN_FILE_ERRORS=0
-            fi
+            echo "Evaluando resultados de PHPStan..."
+            PHPSTAN_ERRORS=$(jq -r '.totals.errors // 0' reports/phpstan-results.json 2>/dev/null || echo 0)
+            PHPSTAN_FILE_ERRORS=$(jq -r '.totals.file_errors // 0' reports/phpstan-results.json 2>/dev/null || echo 0)
             echo "PHPStan - Errores: $PHPSTAN_ERRORS, Errores de archivo: $PHPSTAN_FILE_ERRORS"
             
             # Considerar errores de PHPStan como alta severidad
@@ -210,8 +204,8 @@ jobs:
           echo "security_score=$SECURITY_SCORE" >> $GITHUB_OUTPUT
           echo "security_grade=$GRADE" >> $GITHUB_OUTPUT
           
-          echo "📊 Resumen de vulnerabilidades:"
-          echo "   Críticas: $CRITICAL_COUNT"
+          echo "Resumen de vulnerabilidades:"
+          echo "   Criticas: $CRITICAL_COUNT"
           echo "   Altas: $HIGH_COUNT"
           echo "   Puntuación seguridad: $SECURITY_SCORE/100"
           echo "   Calificación: $GRADE"
@@ -227,7 +221,7 @@ jobs:
 
   # ANÁLISIS DE DEPENDENCIAS
   dependency-scan:
-    name: 📦 Dependency Vulnerability Scan
+    name: Dependency Vulnerability Scan
     runs-on: ubuntu-latest
     needs: sast-analysis
     
@@ -250,15 +244,15 @@ jobs:
           composer audit --format=json > reports/composer-audit.json || echo '{}' > reports/composer-audit.json
           composer audit --format=table || echo "Composer audit completado"
 
-      # OWASP Dependency Check
+      # OWASP Dependency Check - CONFIGURACIÓN CORREGIDA
       - name: Run OWASP Dependency Check
         uses: dependency-check/Dependency-Check_Action@main
         with:
           project: "Laravel App Security Scan"
           path: "./"
-          format: "HTML,JSON,CSV"
+          format: "ALL"  # CORREGIDO: Usar "ALL" en lugar de lista separada por comas
           out: "reports"
-          args: >
+          args: |
             --enableRetired
             --failOnCVSS 9
             --scan vendor/
@@ -270,7 +264,7 @@ jobs:
           REPORT="docs/security-report.md"
           
           # Encabezado del reporte
-          echo "# 📊 Informe de Seguridad - $(basename `git rev-parse --show-toplevel`)" > $REPORT
+          echo "# Informe de Seguridad - $(basename `git rev-parse --show-toplevel`)" > $REPORT
           echo "**Fecha de generación:** $(date)" >> $REPORT
           echo "**Rama:** $GITHUB_REF_NAME" >> $REPORT
           echo "**Commit:** $GITHUB_SHA" >> $REPORT
@@ -294,13 +288,13 @@ jobs:
           
           # Análisis por Categoría
           echo "## Análisis por Categoría" >> $REPORT
-          echo "### 🔍 Código" >> $REPORT
+          echo "### Código" >> $REPORT
           echo "- Problemas de inyección: ${{ needs.sast-analysis.outputs.critical_vulns }}" >> $REPORT
           echo "- Gestión de sesiones: Por revisar" >> $REPORT
           echo "- Validación de entrada: Por revisar" >> $REPORT
           echo "" >> $REPORT
           
-          echo "### 📦 Dependencias" >> $REPORT
+          echo "### Dependencias" >> $REPORT
           echo "- Dependencias con vulnerabilidades: Consultar composer-audit.json" >> $REPORT
           echo "- Librerías desactualizadas: Consultar dependency-check-report" >> $REPORT
           echo "- Licencias problemáticas: Revisar en reports/" >> $REPORT
@@ -337,19 +331,19 @@ jobs:
       - name: Notify on critical issues
         if: needs.sast-analysis.outputs.critical_vulns > 0
         run: |
-          echo "🚨 ALERTA: Se detectaron ${{ needs.sast-analysis.outputs.critical_vulns }} vulnerabilidades críticas"
+          echo "ALERTA: Se detectaron ${{ needs.sast-analysis.outputs.critical_vulns }} vulnerabilidades críticas"
           echo "Revisa el reporte completo en los artefactos del workflow"
 
   # JOB FINAL - EVALUACIÓN GENERAL
   security-assessment:
-    name: ✅ Security Assessment Summary
+    name: Security Assessment Summary
     runs-on: ubuntu-latest
     needs: [sast-analysis, dependency-scan]
     
     steps:
       - name: Generate final assessment
         run: |
-          echo "🎯 RESUMEN FINAL DE SEGURIDAD"
+          echo "RESUMEN FINAL DE SEGURIDAD"
           echo "================================"
           echo "Puntuación: ${{ needs.sast-analysis.outputs.security_score }}/100"
           echo "Calificación: ${{ needs.sast-analysis.outputs.security_grade }}"
@@ -358,13 +352,13 @@ jobs:
           echo ""
           
           if [ ${{ needs.sast-analysis.outputs.critical_vulns }} -gt 0 ]; then
-            echo "❌ SE REQUIERE ACCIÓN INMEDIATA"
+            echo "SE REQUIERE ACCION INMEDIATA"
             echo "Se detectaron vulnerabilidades críticas que deben remediarse."
             exit 1
           elif [ ${{ needs.sast-analysis.outputs.security_score }} -lt 70 ]; then
-            echo "⚠️ SEGURIDAD MEJORABLE"
+            echo "SEGURIDAD MEJORABLE"
             echo "Se recomienda mejorar las prácticas de seguridad."
           else
-            echo "✅ ESTADO DE SEGURIDAD ACEPTABLE"
+            echo "ESTADO DE SEGURIDAD ACEPTABLE"
             echo "El proyecto mantiene un buen nivel de seguridad."
           fi
