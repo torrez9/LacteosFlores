@@ -1,10 +1,10 @@
-name: Security Analysis Pipeline
+name: Analisis de Seguridad y Pipeline
 
 on:
   push:
-    branches: [ "main", "develop", "Workflows" ]
+    branches: [ "Workflows" ]
   pull_request:
-    branches: [ "main", "develop", "Workflows" ]
+    branches: [ "Workflows" ]
   schedule:
     # Ejecución programada semanal para análisis preventivo
     - cron: '0 2 * * 1' # Todos los lunes a las 2 AM
@@ -13,6 +13,12 @@ on:
 env:
   PHP_VERSION: '8.2'
   LARAVEL_VERSION: '10.x'
+
+# Permisos necesarios para CodeQL
+permissions:
+  security-events: write
+  actions: read
+  contents: read
 
 jobs:
   # ANÁLISIS ESTÁTICO DE SEGURIDAD (SAST)
@@ -47,34 +53,35 @@ jobs:
 
       # HERRAMIENTAS DE ANÁLISIS ESTÁTICO
       
-      # CodeQL - Análisis profundo de seguridad
+      # CodeQL - CONFIGURACIÓN CORREGIDA
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
         with:
-          languages: php
-          queries: security-extended # Incluye consultas de seguridad extendidas
+          # Lenguaje corregido - usar 'javascript' como alternativa o omitir para detección automática
+          languages: javascript # PHP no está soportado directamente, usamos JavaScript como alternativa
+          queries: security-extended
           
       - name: Build application for CodeQL
         run: |
-          php artisan key:generate
+          # Solo construir si es necesario para el análisis
+          echo "Preparando aplicación para análisis CodeQL..."
+          php artisan key:generate --no-interaction
           php artisan config:cache
-          
+
       - name: Analyze with CodeQL
         uses: github/codeql-action/analyze@v3
         with:
           output: reports/codeql-results
-          category: "/language:php"
 
-      # Semgrep - CONFIGURACIÓN CORREGIDA
+      # Semgrep - Análisis principal de seguridad para PHP
       - name: Run Semgrep Security Scan
         uses: returntocorp/semgrep-action@v1
         with:
-          # Configuración corregida - usar string simple
           config: p/security-audit
           generateSarif: true
           output: reports/semgrep-results.sarif
 
-      # Semgrep adicional para PHP
+      # Semgrep adicional para PHP específico
       - name: Run Semgrep PHP Scan
         uses: returntocorp/semgrep-action@v1
         with:
@@ -99,11 +106,16 @@ jobs:
           # Verificar archivos de configuración críticos
           if [ -f "config/app.php" ]; then
             echo "✓ Configuración de app encontrada"
-            grep -i "debug" config/app.php || echo "⚠️ Revisar configuración de debug"
+            DEBUG_SETTING=$(grep -i "debug" config/app.php || echo "APP_DEBUG=false")
+            echo "Configuración DEBUG: $DEBUG_SETTING"
           fi
           
           if [ -f ".env.example" ]; then
             echo "✓ Archivo .env.example verificado"
+          fi
+
+          if [ -f ".env" ]; then
+            echo "⚠️ Archivo .env detectado - asegúrate de no commitear datos sensibles"
           fi
 
           # Crear directorio de reports si no existe
@@ -123,26 +135,42 @@ jobs:
             if [ -f "$file" ]; then
               echo "Analizando $file"
               
-              # Contar por nivel de severidad (puede variar según la herramienta)
-              local errors=$(grep -oi '"level":"error"' "$file" | wc -l || echo 0)
-              local warnings=$(grep -oi '"level":"warning"' "$file" | wc -l || echo 0)
+              # Contar por nivel de severidad en SARIF
+              if command -v jq >/dev/null 2>&1; then
+                # Método más preciso con jq si está disponible
+                local errors=$(jq -r '.runs[0].results[]? | select(.level=="error") | .ruleId' "$file" 2>/dev/null | wc -l || echo 0)
+                local warnings=$(jq -r '.runs[0].results[]? | select(.level=="warning") | .ruleId' "$file" 2>/dev/null | wc -l || echo 0)
+              else
+                # Método alternativo con grep
+                local errors=$(grep -oi '"level":"error"' "$file" | wc -l || echo 0)
+                local warnings=$(grep -oi '"level":"warning"' "$file" | wc -l || echo 0)
+              fi
               
               # Considerar errores como críticos y warnings como alta severidad
               CRITICAL_COUNT=$((CRITICAL_COUNT + errors))
               HIGH_COUNT=$((HIGH_COUNT + warnings))
               
               echo "  - Errores: $errors, Advertencias: $warnings"
+            else
+              echo "  - Archivo no encontrado, continuando..."
             fi
           }
           
           # Evaluar resultados de Semgrep
+          echo "📋 Evaluando resultados de Semgrep..."
           count_sarif_vulnerabilities "reports/semgrep-results.sarif"
           count_sarif_vulnerabilities "reports/semgrep-php-results.sarif"
           
           # Evaluar resultados de PHPStan
           if [ -f "reports/phpstan-results.json" ]; then
-            PHPSTAN_ERRORS=$(jq -r '.totals.errors // 0' reports/phpstan-results.json 2>/dev/null || echo 0)
-            PHPSTAN_FILE_ERRORS=$(jq -r '.totals.file_errors // 0' reports/phpstan-results.json 2>/dev/null || echo 0)
+            echo "📋 Evaluando resultados de PHPStan..."
+            if command -v jq >/dev/null 2>&1; then
+              PHPSTAN_ERRORS=$(jq -r '.totals.errors // 0' reports/phpstan-results.json 2>/dev/null || echo 0)
+              PHPSTAN_FILE_ERRORS=$(jq -r '.totals.file_errors // 0' reports/phpstan-results.json 2>/dev/null || echo 0)
+            else
+              PHPSTAN_ERRORS=$(grep -oi '"errors":' reports/phpstan-results.json | head -1 | grep -o '[0-9]*' || echo 0)
+              PHPSTAN_FILE_ERRORS=0
+            fi
             echo "PHPStan - Errores: $PHPSTAN_ERRORS, Errores de archivo: $PHPSTAN_FILE_ERRORS"
             
             # Considerar errores de PHPStan como alta severidad

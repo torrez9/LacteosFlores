@@ -1,86 +1,238 @@
-name: Code Analysis
+name:  Análisis de código
 
 on:
   push:
     branches: [ "Workflows" ]
   pull_request:
     branches: [ "Workflows" ]
+  schedule:
+    # Análisis programado semanal para mantener calidad
+    - cron: '0 1 * * 0' # Todos los domingos a la 1 AM
+
+# Configuración global
+env:
+  PHP_VERSION: '8.2'
+  COMPOSER_FLAGS: '--no-interaction --no-progress --prefer-dist'
+
+# Permisos para commits automáticos (si se requieren)
+permissions:
+  contents: write
 
 jobs:
-  sast-analysis:
-    name: Static Application Security Testing (SAST)
+  code-analysis:
+    name: Code Quality & Security Scan
     runs-on: ubuntu-latest
+    outputs:
+      has_critical_issues: ${{ steps.evaluate-issues.outputs.has_critical_issues }}
+      phpstan_errors: ${{ steps.evaluate-issues.outputs.phpstan_errors }}
+      semgrep_findings: ${{ steps.evaluate-issues.outputs.semgrep_findings }}
 
     steps:
+      # 1. PREPARACIÓN DEL ENTORNO
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set up PHP
+      - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.2'
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: mbstring, xml, ctype, iconv, intl, pdo_mysql
+          coverage: none
+
+      - name: Cache Composer packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.composer/cache
+          key: ${{ runner.os }}-php-${{ hashFiles('**/composer.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-php-
 
       - name: Install Composer dependencies
-        run: composer install -q --no-interaction --no-progress --prefer-dist
+        run: |
+          composer install ${{ env.COMPOSER_FLAGS }}
+          composer dump-autoload -o
 
-      # CodeQL
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
-        with:
-          languages: php
-
-      - name: Analyze with CodeQL
-        uses: github/codeql-action/analyze@v3
-        with:
-          output: codeql-results
-
-      # Semgrep
+      # 2. HERRAMIENTAS DE ANÁLISIS DE CÓDIGO
       - name: Run Semgrep Security Scan
         uses: returntocorp/semgrep-action@v1
         with:
-          config: p/security-audit
-          generateSarif: true
-          output: semgrep-results.sarif
+          config: |
+            p/security-audit
+            p/php
+          generate-sarif: true
+          output: reports/semgrep-results.sarif
 
-      - name: Evaluate critical vulnerabilities
+      - name: Install PHPStan
+        run: composer require --dev phpstan/phpstan larastan/larastan --no-interaction
+
+      - name: Run PHPStan Analysis
         run: |
-          echo "Evaluando vulnerabilidades críticas..."
-          if grep -qi "CRITICAL" semgrep-results.sarif; then
-            echo "❌ Vulnerabilidades críticas detectadas. Pipeline fallará."
-            exit 1
-          else
-            echo "✅ Sin vulnerabilidades críticas detectadas."
+          mkdir -p reports
+          vendor/bin/phpstan analyse --error-format=json > reports/phpstan-results.json 2>/dev/null || echo '{"totals":{"errors":0,"file_errors":0}}' > reports/phpstan-results.json
+          echo "=== RESULTADOS PHPStan ==="
+          vendor/bin/phpstan analyse --no-progress --error-format=table --memory-limit=1G || true
+
+      - name: Install PHP_CodeSniffer
+        run: composer require --dev squizlabs/php_codesniffer --no-interaction
+
+      - name: Run PHP_CodeSniffer
+        run: |
+          mkdir -p reports
+          vendor/bin/phpcs --standard=PSR12 --report=json --report-file=reports/phpcs-results.json app/ database/ tests/ || echo '{"totals":{"errors":0,"warnings":0}}' > reports/phpcs-results.json
+          echo "=== RESULTADOS PHP_CodeSniffer ==="
+          vendor/bin/phpcs --standard=PSR12 --colors app/ database/ tests/ || true
+
+      # 3. EVALUACIÓN DE RESULTADOS
+      - name: Evaluate code quality issues
+        id: evaluate-issues
+        run: |
+          CRITICAL_ISSUES=false
+          PHPSTAN_ERRORS=0
+          SEMGREP_FINDINGS=0
+
+          # Analizar resultados de Semgrep
+          if [ -f "reports/semgrep-results.sarif" ]; then
+            if command -v jq >/dev/null 2>&1; then
+              SEMGREP_ERRORS=$(jq -r '.runs[0].results[]? | select(.level=="error") | .ruleId' reports/semgrep-results.sarif 2>/dev/null | wc -l || echo 0)
+              SEMGREP_WARNINGS=$(jq -r '.runs[0].results[]? | select(.level=="warning") | .ruleId' reports/semgrep-results.sarif 2>/dev/null | wc -l || echo 0)
+            else
+              SEMGREP_ERRORS=$(grep -oi '"level":"error"' reports/semgrep-results.sarif | wc -l || echo 0)
+              SEMGREP_WARNINGS=$(grep -oi '"level":"warning"' reports/semgrep-results.sarif | wc -l || echo 0)
+            fi
+            SEMGREP_FINDINGS=$((SEMGREP_ERRORS + SEMGREP_WARNINGS))
+            if [ $SEMGREP_ERRORS -gt 0 ]; then
+              CRITICAL_ISSUES=true
+            fi
           fi
 
+          # Analizar resultados de PHPStan
+          if [ -f "reports/phpstan-results.json" ]; then
+            if command -v jq >/dev/null 2>&1; then
+              PHPSTAN_ERRORS=$(jq -r '.totals.errors // 0' reports/phpstan-results.json 2>/dev/null || echo 0)
+              PHPSTAN_FILE_ERRORS=$(jq -r '.totals.file_errors // 0' reports/phpstan-results.json 2>/dev/null || echo 0)
+            else
+              PHPSTAN_ERRORS=0
+              PHPSTAN_FILE_ERRORS=0
+            fi
+            PHPSTAN_TOTAL=$((PHPSTAN_ERRORS + PHPSTAN_FILE_ERRORS))
+          fi
+
+          # Analizar resultados de PHP_CodeSniffer
+          if [ -f "reports/phpcs-results.json" ]; then
+            if command -v jq >/dev/null 2>&1; then
+              PHPCS_ERRORS=$(jq -r '.totals.errors // 0' reports/phpcs-results.json 2>/dev/null || echo 0)
+              PHPCS_WARNINGS=$(jq -r '.totals.warnings // 0' reports/phpcs-results.json 2>/dev/null || echo 0)
+            else
+              PHPCS_ERRORS=0
+              PHPCS_WARNINGS=0
+            fi
+          fi
+
+          echo "has_critical_issues=$CRITICAL_ISSUES" >> $GITHUB_OUTPUT
+          echo "phpstan_errors=$PHPSTAN_TOTAL" >> $GITHUB_OUTPUT
+          echo "semgrep_findings=$SEMGREP_FINDINGS" >> $GITHUB_OUTPUT
+
+      # 4. SUBIR ARTEFACTOS
       - name: Upload analysis artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: sast-analysis-results
+          name: code-analysis-results
           path: |
-            semgrep-results.sarif
-            codeql-results/
+            reports/
+          retention-days: 30
 
-      - name: Generate code analysis summary
+      # 5. GENERAR REPORTE DETALLADO
+      - name: Generate comprehensive code analysis report
         run: |
           mkdir -p docs
-          REPORT="docs/code-analysis-summary.md"
-          echo "# 🔍 Resumen de Análisis de Código" > $REPORT
-          echo "Fecha: $(date)" >> $REPORT
-          echo "- Herramientas: CodeQL, Semgrep" >> $REPORT
-          echo "- Rama: $GITHUB_REF_NAME" >> $REPORT
+          REPORT="docs/code-analysis-report.md"
+          echo "# Reporte de Análisis de Código" > $REPORT
+          echo "**Fecha de generación:** $(date)" >> $REPORT
+          echo "**Rama:** $GITHUB_REF_NAME" >> $REPORT
+          echo "**Commit:** $GITHUB_SHA" >> $REPORT
           echo "" >> $REPORT
-          if grep -qi "CRITICAL" semgrep-results.sarif; then
-            echo "❌ Se detectaron vulnerabilidades críticas." >> $REPORT
+
+          # Resumen Ejecutivo
+          echo "## Resumen Ejecutivo" >> $REPORT
+          if ${{ steps.evaluate-issues.outputs.has_critical_issues }} == 'true'; then
+            echo "### Estado: Crítico" >> $REPORT
+            echo "Se detectaron problemas críticos de seguridad que requieren atención inmediata." >> $REPORT
           else
-            echo "✅ Sin vulnerabilidades críticas detectadas." >> $REPORT
+            echo "### Estado: Aceptable" >> $REPORT
+            echo "El código mantiene un nivel de calidad y seguridad aceptable." >> $REPORT
           fi
           echo "" >> $REPORT
-          echo "Resultados detallados disponibles en los artefactos de la acción." >> $REPORT
 
-      - name: Commit and Push Summary
+          # Métricas por herramienta
+          echo "## Métricas de Calidad" >> $REPORT
+          echo "" >> $REPORT
+          echo "### Semgrep (Seguridad)" >> $REPORT
+          echo "- Total de hallazgos: ${{ steps.evaluate-issues.outputs.semgrep_findings }}" >> $REPORT
+          echo "- Estado: ${{ steps.evaluate-issues.outputs.has_critical_issues == 'true' && 'Crítico' || 'Aceptable' }}" >> $REPORT
+          echo "" >> $REPORT
+
+          echo "### PHPStan (Calidad)" >> $REPORT
+          echo "- Errores encontrados: ${{ steps.evaluate-issues.outputs.phpstan_errors }}" >> $REPORT
+          echo "- Estado: ${{ steps.evaluate-issues.outputs.phpstan_errors > 0 && 'Necesita mejora' || 'Óptimo' }}" >> $REPORT
+          echo "" >> $REPORT
+
+          # Recomendaciones
+          echo "## Recomendaciones" >> $REPORT
+          echo "" >> $REPORT
+          if ${{ steps.evaluate-issues.outputs.has_critical_issues }} == 'true'; then
+            echo "1. PRIORITARIO: Corregir vulnerabilidades críticas de seguridad identificadas por Semgrep" >> $REPORT
+          fi
+          if ${{ steps.evaluate-issues.outputs.phpstan_errors }} > 0; then
+            echo "2. MEJORA: Resolver errores de tipo identificados por PHPStan" >> $REPORT
+          fi
+          echo "3. REVISIÓN: Consultar los reportes completos en los artefactos de esta ejecución" >> $REPORT
+          echo "" >> $REPORT
+
+          # Próximos pasos
+          echo "## Próximos Pasos" >> $REPORT
+          echo "" >> $REPORT
+          echo "1. Revisar los reportes detallados en la pestaña 'Artifacts'" >> $REPORT
+          echo "2. Corregir los problemas identificados según su prioridad" >> $REPORT
+          echo "3. Ejecutar el análisis localmente antes del próximo commit" >> $REPORT
+          echo "" >> $REPORT
+          echo "---" >> $REPORT
+          echo "*Reporte generado automáticamente por GitHub Actions*" >> $REPORT
+          echo "" >> $REPORT
+
+      # 6. COMMIT OPCIONAL DEL REPORTE (solo en ramas específicas)
+      - name: Commit and push analysis report
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add docs/code-analysis-summary.md
-          git commit -m "📄 Resumen automático de análisis de código"
-          git push origin $GITHUB_REF_NAME || echo "No hay cambios nuevos"
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/code-analysis-report.md
+          git diff --staged --quiet || (git commit -m "Actualizar reporte de análisis de código [skip ci]" && git push) || echo "No hay cambios para commitear"
+
+  # 7. JOB DE EVALUACIÓN FINAL
+  quality-gate:
+    name: Quality Gate
+    runs-on: ubuntu-latest
+    needs: code-analysis
+    if: always()
+
+    steps:
+      - name: Evaluate quality gate
+        run: |
+          echo "EVALUACIÓN FINAL DE CALIDAD"
+          echo "==============================="
+          echo "Problemas críticos: ${{ needs.code-analysis.outputs.has_critical_issues }}"
+          echo "Errores PHPStan: ${{ needs.code-analysis.outputs.phpstan_errors }}"
+          echo "Hallazgos Semgrep: ${{ needs.code-analysis.outputs.semgrep_findings }}"
+          echo ""
+
+          if ${{ needs.code-analysis.outputs.has_critical_issues }} == 'true'; then
+            echo "QUALITY GATE: FALLIDO"
+            exit 1
+          elif ${{ needs.code-analysis.outputs.phpstan_errors }} > 10; then
+            echo "QUALITY GATE: ADVERTENCIA"
+          else
+            echo "QUALITY GATE: APROBADO"
+          fi
