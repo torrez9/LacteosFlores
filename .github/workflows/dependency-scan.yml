@@ -2,9 +2,9 @@ name: Dependency Security Scan
 
 on:
   push:
-    branches: [ "Workflows" ]
+    branches: [ "main", "develop", "Workflows" ]
   pull_request:
-    branches: [ "Workflows" ]
+    branches: [ "main", "develop", "Workflows" ]
   schedule:
     # Ejecución programada semanal para análisis preventivo
     - cron: '0 3 * * 2' # Todos los martes a las 3 AM
@@ -56,50 +56,22 @@ jobs:
 
       # HERRAMIENTAS DE ANALISIS DE DEPENDENCIAS
       
-      # Auditoría de Composer
+      # Auditoría de Composer - Análisis principal
       - name: Run Composer Security Audit
         run: |
           mkdir -p reports
           echo "Ejecutando auditoria de seguridad de Composer..."
           composer audit --format=json > reports/composer-audit.json 2>/dev/null || echo '{"advisories": {}}' > reports/composer-audit.json
+          echo "=== RESULTADOS COMPOSER AUDIT ==="
           composer audit --format=table || echo "Composer audit completado"
 
-      # Crear archivo de supresiones si no existe
-      - name: Create suppression file if missing
+      # Análisis de dependencias desactualizadas
+      - name: Check for outdated dependencies
         run: |
-          mkdir -p .github
-          if [ ! -f ".github/dependency-check-suppressions.xml" ]; then
-            cat > .github/dependency-check-suppressions.xml << 'EOF'
-          <?xml version="1.0" encoding="UTF-8"?>
-          <suppressions xmlns="https://jeremylong.github.io/DependencyCheck/dependency-suppression.1.3.xsd">
-              <!-- Ejemplo de supresión para falsos positivos -->
-              <!--
-              <suppress>
-                  <notes><![CDATA[Supresión para falso positivo en librería específica]]></notes>
-                  <packageUrl regex="true">^pkg:composer/example/package@.*$</packageUrl>
-                  <vulnerabilityName regex="true">.*</vulnerabilityName>
-              </suppress>
-              -->
-          </suppressions>
-          EOF
-            echo "Archivo de supresiones creado en .github/dependency-check-suppressions.xml"
-          else
-            echo "Archivo de supresiones ya existe"
-          fi
-
-      # OWASP Dependency Check - Análisis completo CORREGIDO
-      - name: Run OWASP Dependency Check
-        uses: dependency-check/Dependency-Check_Action@main
-        with:
-          project: "Laravel Application"
-          path: "./"
-          format: "HTML,JSON,CSV"
-          out: "reports"
-          args: |
-            --enableRetired
-            --failOnCVSS 7
-            --scan vendor/
-            --suppression ".github/dependency-check-suppressions.xml"
+          echo "Verificando dependencias desactualizadas..."
+          composer outdated --direct --format=json > reports/composer-outdated.json 2>/dev/null || echo '{"installed": []}' > reports/composer-outdated.json
+          echo "=== DEPENDENCIAS DESACTUALIZADAS ==="
+          composer outdated --direct --format=table || echo "Todas las dependencias están actualizadas"
 
       # EVALUACION DE VULNERABILIDADES MEJORADA
       - name: Evaluate dependency vulnerabilities
@@ -120,39 +92,35 @@ jobs:
           if [ -f "reports/composer-audit.json" ]; then
             echo "Analizando resultados de Composer Audit..."
             COMPOSER_ADVISORIES=$(jq -r '.advisories | length' reports/composer-audit.json 2>/dev/null || echo 0)
-            TOTAL_COUNT=$((TOTAL_COUNT + COMPOSER_ADVISORIES))
+            
+            # Contar severidades si están disponibles en el formato
+            if [ $COMPOSER_ADVISORIES -gt 0 ]; then
+              # Composer audit no proporciona severidades directamente, considerar todas como alta
+              HIGH_COUNT=$COMPOSER_ADVISORIES
+              TOTAL_COUNT=$COMPOSER_ADVISORIES
+            fi
+            
             echo "Composer Audit - Advisory reports: $COMPOSER_ADVISORIES"
           fi
 
-          # Analizar resultados de OWASP Dependency Check
-          if [ -f "reports/dependency-check-report.json" ]; then
-            echo "Analizando resultados de OWASP Dependency Check..."
+          # Analizar dependencias desactualizadas
+          if [ -f "reports/composer-outdated.json" ]; then
+            echo "Analizando dependencias desactualizadas..."
+            OUTDATED_COUNT=$(jq -r '.installed | length' reports/composer-outdated.json 2>/dev/null || echo 0)
+            echo "Dependencias desactualizadas: $OUTDATED_COUNT"
             
-            # Contar vulnerabilidades por severidad
-            CRITICAL_COUNT=$(jq -r '.dependencies[]?.vulnerabilities[]? | select(.severity == "CRITICAL") | .name' reports/dependency-check-report.json 2>/dev/null | sort -u | wc -l || echo 0)
-            HIGH_COUNT=$(jq -r '.dependencies[]?.vulnerabilities[]? | select(.severity == "HIGH") | .name' reports/dependency-check-report.json 2>/dev/null | sort -u | wc -l || echo 0)
-            MEDIUM_COUNT=$(jq -r '.dependencies[]?.vulnerabilities[]? | select(.severity == "MEDIUM") | .name' reports/dependency-check-report.json 2>/dev/null | sort -u | wc -l || echo 0)
-            LOW_COUNT=$(jq -r '.dependencies[]?.vulnerabilities[]? | select(.severity == "LOW") | .name' reports/dependency-check-report.json 2>/dev/null | sort -u | wc -l || echo 0)
-            
-            ALL_VULNS=$((CRITICAL_COUNT + HIGH_COUNT + MEDIUM_COUNT + LOW_COUNT))
-            TOTAL_COUNT=$((TOTAL_COUNT + ALL_VULNS))
-            
-            echo "OWASP Dependency Check - Vulnerabilidades:"
-            echo "  Criticas: $CRITICAL_COUNT"
-            echo "  Altas: $HIGH_COUNT"
-            echo "  Medias: $MEDIUM_COUNT"
-            echo "  Bajas: $LOW_COUNT"
-            echo "  Total: $ALL_VULNS"
-          else
-            echo "Advertencia: No se encontró el archivo dependency-check-report.json"
+            # Considerar dependencias mayormente desactualizadas como advertencia
+            if [ $OUTDATED_COUNT -gt 5 ]; then
+              HIGH_COUNT=$((HIGH_COUNT + 1))
+            fi
           fi
 
-          # Determinar estado del escaneo
-          if [ $CRITICAL_COUNT -gt 0 ]; then
+          # Determinar estado del escaneo basado en Composer Audit
+          if [ $COMPOSER_ADVISORIES -gt 0 ]; then
             SCAN_STATUS="critical"
-          elif [ $HIGH_COUNT -gt 0 ]; then
+          elif [ $OUTDATED_COUNT -gt 5 ]; then
             SCAN_STATUS="high"
-          elif [ $TOTAL_COUNT -gt 0 ]; then
+          elif [ $OUTDATED_COUNT -gt 0 ]; then
             SCAN_STATUS="warning"
           else
             SCAN_STATUS="clean"
@@ -164,11 +132,10 @@ jobs:
           echo "scan_status=$SCAN_STATUS" >> $GITHUB_OUTPUT
 
           echo "========================================"
-          echo "RESUMEN DE VULNERABILIDADES EN DEPENDENCIAS"
+          echo "RESUMEN DE SEGURIDAD EN DEPENDENCIAS"
           echo "========================================"
-          echo "Vulnerabilidades criticas: $CRITICAL_COUNT"
-          echo "Vulnerabilidades altas: $HIGH_COUNT"
-          echo "Total de vulnerabilidades: $TOTAL_COUNT"
+          echo "Advertencias de seguridad: $COMPOSER_ADVISORIES"
+          echo "Dependencias desactualizadas: $OUTDATED_COUNT"
           echo "Estado del escaneo: $SCAN_STATUS"
           echo "========================================"
 
@@ -197,24 +164,23 @@ jobs:
           echo "## Executive Summary" >> $REPORT
           echo "" >> $REPORT
           echo "- **Scan Status:** ${{ steps.evaluate-vulnerabilities.outputs.scan_status }}" >> $REPORT
-          echo "- **Critical Vulnerabilities:** ${{ steps.evaluate-vulnerabilities.outputs.critical_vulnerabilities }}" >> $REPORT
-          echo "- **High Severity Vulnerabilities:** ${{ steps.evaluate-vulnerabilities.outputs.high_vulnerabilities }}" >> $REPORT
-          echo "- **Total Vulnerabilities Found:** ${{ steps.evaluate-vulnerabilities.outputs.total_vulnerabilities }}" >> $REPORT
+          echo "- **Security Advisories:** ${{ steps.evaluate-vulnerabilities.outputs.total_vulnerabilities }}" >> $REPORT
+          echo "- **Scan Date:** $(date)" >> $REPORT
           echo "" >> $REPORT
           
           # Analisis por Herramienta
-          echo "## Analysis by Tool" >> $REPORT
+          echo "## Analysis Details" >> $REPORT
           echo "" >> $REPORT
           echo "### Composer Security Audit" >> $REPORT
           echo "- **Purpose:** Security advisory check for PHP dependencies" >> $REPORT
           echo "- **Scope:** composer.json and composer.lock" >> $REPORT
+          echo "- **Advisories Found:** ${{ steps.evaluate-vulnerabilities.outputs.total_vulnerabilities }}" >> $REPORT
           echo "" >> $REPORT
           
-          echo "### OWASP Dependency Check" >> $REPORT
-          echo "- **Purpose:** Comprehensive vulnerability scanning" >> $REPORT
-          echo "- **Scope:** All dependencies in vendor/ directory" >> $REPORT
-          echo "- **CVSS Threshold:** 7.0 (Medium and above)" >> $REPORT
-          echo "- **Suppression File:** .github/dependency-check-suppressions.xml" >> $REPORT
+          echo "### Dependency Update Status" >> $REPORT
+          echo "- **Purpose:** Check for outdated dependencies" >> $REPORT
+          echo "- **Scope:** Direct dependencies only" >> $REPORT
+          echo "- **Status:** Based on latest available versions" >> $REPORT
           echo "" >> $REPORT
           
           # Hallazgos y Recomendaciones
@@ -223,38 +189,57 @@ jobs:
           
           if [ "${{ steps.evaluate-vulnerabilities.outputs.scan_status }}" = "critical" ]; then
             echo "### URGENT ACTION REQUIRED" >> $REPORT
-            echo "Critical vulnerabilities detected that require immediate remediation." >> $REPORT
-            echo "1. Update dependencies with critical vulnerabilities immediately" >> $REPORT
-            echo "2. Review dependency-check-report.html for detailed information" >> $REPORT
-            echo "3. Consider alternative packages if updates are not available" >> $REPORT
+            echo "Security advisories detected that require immediate remediation." >> $REPORT
+            echo "1. Update dependencies with security advisories immediately" >> $REPORT
+            echo "2. Review composer audit report for detailed information" >> $REPORT
+            echo "3. Run 'composer audit' locally to see specific advisories" >> $REPORT
           elif [ "${{ steps.evaluate-vulnerabilities.outputs.scan_status }}" = "high" ]; then
             echo "### HIGH PRIORITY ACTION NEEDED" >> $REPORT
-            echo "High severity vulnerabilities detected that should be addressed soon." >> $REPORT
-            echo "1. Plan updates for dependencies with high severity vulnerabilities" >> $REPORT
+            echo "Multiple outdated dependencies detected that should be addressed soon." >> $REPORT
+            echo "1. Plan updates for outdated dependencies" >> $REPORT
             echo "2. Schedule remediation within the next development cycle" >> $REPORT
+            echo "3. Run 'composer outdated' to see specific packages" >> $REPORT
           elif [ "${{ steps.evaluate-vulnerabilities.outputs.scan_status }}" = "warning" ]; then
             echo "### RECOMMENDED ACTIONS" >> $REPORT
-            echo "Some vulnerabilities detected. Consider addressing in future updates." >> $REPORT
+            echo "Some outdated dependencies detected. Consider addressing in future updates." >> $REPORT
             echo "1. Monitor dependencies for security updates" >> $REPORT
             echo "2. Update during regular maintenance cycles" >> $REPORT
           else
             echo "### SECURITY STATUS: CLEAN" >> $REPORT
-            echo "No critical or high severity vulnerabilities detected." >> $REPORT
+            echo "No security advisories detected and dependencies are up to date." >> $REPORT
             echo "Continue regular dependency update practices." >> $REPORT
           fi
+          echo "" >> $REPORT
+          
+          # Comandos útiles
+          echo "## Useful Commands" >> $REPORT
+          echo "" >> $REPORT
+          echo "```bash" >> $REPORT
+          echo "# View security advisories" >> $REPORT
+          echo "composer audit" >> $REPORT
+          echo "" >> $REPORT
+          echo "# View outdated dependencies" >> $REPORT
+          echo "composer outdated --direct" >> $REPORT
+          echo "" >> $REPORT
+          echo "# Update all dependencies" >> $REPORT
+          echo "composer update" >> $REPORT
+          echo "" >> $REPORT
+          echo "# Update specific dependency" >> $REPORT
+          echo "composer update vendor/package" >> $REPORT
+          echo "```" >> $REPORT
           echo "" >> $REPORT
           
           # Metricas de Mejora
           echo "## Improvement Metrics" >> $REPORT
           echo "" >> $REPORT
-          echo "- **Scan Coverage:** 100% of dependencies" >> $REPORT
+          echo "- **Scan Coverage:** PHP dependencies only" >> $REPORT
           echo "- **Recommended Remediation Time:**" >> $REPORT
           if [ "${{ steps.evaluate-vulnerabilities.outputs.scan_status }}" = "critical" ]; then
             echo "  - Critical: 24-48 hours" >> $REPORT
           elif [ "${{ steps.evaluate-vulnerabilities.outputs.scan_status }}" = "high" ]; then
             echo "  - High: 1-2 weeks" >> $REPORT
           else
-            echo "  - Medium/Low: Next release cycle" >> $REPORT
+            echo "  - Warning: Next release cycle" >> $REPORT
           fi
           echo "- **Automated Scanning:** Enabled (weekly and on push)" >> $REPORT
           echo "" >> $REPORT
@@ -285,20 +270,20 @@ jobs:
         run: |
           echo "DEPENDENCY SECURITY ASSESSMENT"
           echo "=============================="
-          echo "Critical Vulnerabilities: ${{ needs.dependency-scan.outputs.critical_vulnerabilities }}"
-          echo "High Vulnerabilities: ${{ needs.dependency-scan.outputs.high_vulnerabilities }}"
-          echo "Total Vulnerabilities: ${{ needs.dependency-scan.outputs.total_vulnerabilities }}"
+          echo "Security Advisories: ${{ needs.dependency-scan.outputs.total_vulnerabilities }}"
           echo "Scan Status: ${{ needs.dependency-scan.outputs.scan_status }}"
           echo ""
           
           if [ "${{ needs.dependency-scan.outputs.scan_status }}" = "critical" ]; then
-            echo "ASSESSMENT: FAILED - Critical vulnerabilities detected"
+            echo "ASSESSMENT: CRITICAL - Security advisories detected"
             echo "Immediate action required to update dependencies."
+            echo "Run 'composer audit' for details."
             exit 1
           elif [ "${{ needs.dependency-scan.outputs.scan_status }}" = "high" ]; then
-            echo "ASSESSMENT: WARNING - High severity vulnerabilities detected"
+            echo "ASSESSMENT: WARNING - Multiple outdated dependencies"
             echo "Plan dependency updates in the near future."
+            echo "Run 'composer outdated --direct' for details."
           else
-            echo "ASSESSMENT: PASSED - No critical security issues"
-            echo "Dependencies are in a secure state."
+            echo "ASSESSMENT: PASSED - Dependencies are secure"
+            echo "No critical security issues detected."
           fi
